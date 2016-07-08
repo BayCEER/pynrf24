@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+try:
+    from setuptools import setup
+except ImportError as ierr:
+    print 'Import error :' + str(ierr)
+    from distutils.core import setup
 
 setup(
     name='nrf24',
