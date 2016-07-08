@@ -21,7 +21,7 @@
 try:
     # For Raspberry Pi
     import RPi.GPIO as GPIO
-    GPIO.setmode(GPIO.BCM)
+    GPIO.setmode(GPIO.BOARD)
     GPIO.setwarnings(False)
 except ImportError:
     try:
@@ -409,32 +409,59 @@ class NRF24:
     def get_status(self):
         return self.spidev.xfer2([NRF24.NOP])[0]
 
-    def print_status(self, status):
-        status_str = "0x{0:02x} RX_DR={1:x} TX_DS={2:x} MAX_RT={3:x} RX_P_NO={4:x} TX_FULL={5:x}".format(
+    def get_status_str(self, status):
+        status_str = "STATUS\t = 0x{0:02x} RX_DR={1:x} TX_DS={2:x} MAX_RT={3:x} RX_P_NO={4:x} TX_FULL={5:x}".format(
             status,
             1 if status & NRF24.RX_DR else 0,
             1 if status & NRF24.TX_DS else 0,
             1 if status & NRF24.MAX_RT else 0,
             ((status >> NRF24.RX_P_NO) & int("111", 2)),
             1 if status & NRF24.TX_FULL else 0)
+        return status_str
 
-        self.print_single_status_line("STATUS", status_str)
-
-    def print_observe_tx(self, value):
+        
+    def print_status(self, status):
+        print self.get_status_str(status)
+        
+    def get_observe_tx_str(self, value):
         tx_str = "OBSERVE_TX=0x{0:02x}: POLS_CNT={2:x} ARC_CNT={2:x}\r\n".format(
             value,
-            (value >> NRF24.PLOS_CNT) & int("1111", 2),
-            (value >> NRF24.ARC_CNT) & int("1111", 2))
-        self.print_single_status_line("OBSERVE_TX", tx_str)
+            (value >> NRF24.PLOS_CNT) & int("1111",2),
+            (value >> NRF24.ARC_CNT)  & int("1111",2)
+            )
+        return tx_str
+
+    def print_observe_tx(self, value):
+        print self.get_observe_tx_str(value)
+
+    def get_byte_register_str(self, name, reg, qty=1):
+        extra_tab = '\t' if len(name) < 8 else 0
+        byte_str= "%s\t%c =" % (name, extra_tab)
+        while qty > 0:
+            byte_str+= " 0x%02x" % (self.read_register(reg))
+            qty -= 1
+            reg += 1
+        return byte_str
+        
 
     def print_byte_register(self, name, reg, qty=1):
-        registers = ["0x{:0>2x}".format(self.read_register(reg+r)) for r in range(0, qty)]
-        self.print_single_status_line(name, " ".join(registers))
+        print self.get_address_register_str(name, reg, qty)
 
+    def get_address_register_str(self, name, reg, qty=1):
+        extra_tab = '\t' if len(name) < 8 else 0
+        addr_str = "%s\t%c =" % (name, extra_tab)
+
+        while qty > 0:
+            qty -= 1
+            buf = reversed(self.read_register(reg, 5))
+            reg += 1
+            addr_str+=" 0x"
+            for i in buf:
+                addr_str+="%02x" % i
+        return addr_str
+    
     def print_address_register(self, name, reg, qty=1):
-        address_registers = ["0x{0:>02x}{1:>02x}{2:>02x}{3:>02x}{4:>02x}".format(
-            *self.read_register(reg+r, 5))
-            for r in range(qty)]
+        print self.get_address_register_str(name, reg, qty)
 
         self.print_single_status_line(name, " ".join(address_registers))
 
@@ -453,28 +480,26 @@ class NRF24:
     def getPayloadSize(self):
         return self.payload_size
 
+    def getDetails(self):
+        return  "\n".join([self.get_status_str(self.get_status()),
+            self.get_address_register_str("RX_ADDR_P0-1", NRF24.RX_ADDR_P0, 2),
+            self.get_byte_register_str("RX_ADDR_P2-5", NRF24.RX_ADDR_P2, 4),
+            self.get_address_register_str("TX_ADDR", NRF24.TX_ADDR),
+            self.get_byte_register_str("RX_PW_P0-6", NRF24.RX_PW_P0, 6),
+            self.get_byte_register_str("EN_AA", NRF24.EN_AA),
+            self.get_byte_register_str("EN_RXADDR", NRF24.EN_RXADDR),
+            self.get_byte_register_str("RF_CH", NRF24.RF_CH),
+            self.get_byte_register_str("RF_SETUP", NRF24.RF_SETUP),
+            self.get_byte_register_str("CONFIG", NRF24.CONFIG),
+            self.get_byte_register_str("DYNPD/FEATURE", NRF24.DYNPD, 2),
+            "Data Rate\t = %s" % NRF24.datarate_e_str_P[self.getDataRate()],
+            "Model\t\t = %s" % NRF24.model_e_str_P[self.isPVariant()],
+            "CRC Length\t = %s" % NRF24.crclength_e_str_P[self.getCRCLength()],
+            "PA Power\t = %s" % NRF24.pa_dbm_e_str_P[self.getPALevel()]])
+
+
     def printDetails(self):
-        self.print_status(self.get_status())
-        self.print_address_register("RX_ADDR_P0-1", NRF24.RX_ADDR_P0, 2)
-        self.print_byte_register("RX_ADDR_P2-5", NRF24.RX_ADDR_P2, 4)
-        self.print_address_register("TX_ADDR", NRF24.TX_ADDR)
-
-        self.print_byte_register("RX_PW_P0-6", NRF24.RX_PW_P0, 6)
-        self.print_byte_register("EN_AA", NRF24.EN_AA)
-        self.print_byte_register("EN_RXADDR", NRF24.EN_RXADDR)
-        self.print_byte_register("RF_CH", NRF24.RF_CH)
-        self.print_byte_register("RF_SETUP", NRF24.RF_SETUP)
-        self.print_byte_register("SETUP_AW", NRF24.SETUP_AW)
-        self.print_byte_register("OBSERVE_TX", NRF24.OBSERVE_TX)
-        self.print_byte_register("CONFIG", NRF24.CONFIG)
-        self.print_byte_register("FIFO_STATUS", NRF24.FIFO_STATUS)
-        self.print_byte_register("DYNPD", NRF24.DYNPD)
-        self.print_byte_register("FEATURE", NRF24.FEATURE)
-
-        self.print_single_status_line("Data Rate", NRF24.datarate_e_str_P[self.getDataRate()])
-        self.print_single_status_line("Model", NRF24.model_e_str_P[self.isPVariant()])
-        self.print_single_status_line("CRC Length", NRF24.crclength_e_str_P[self.getCRCLength()])
-        self.print_single_status_line("PA Power", NRF24.pa_dbm_e_str_P[self.getPALevel()])
+        print self.getDetails()
 
     def stopListening(self):
         self.ce(0)
@@ -570,7 +595,11 @@ class NRF24:
                     status = self.get_status()  # Seems like we do!
                     if status & NRF24.RX_DR or (status & NRF24.RX_P_NO_MASK != NRF24.RX_P_NO_MASK):
                         result = True
-
+        # read status once again see Note on page 52 or 56 in product specification 1.0
+        # Note: The 3 bit pipe information in the STATUS register is updated during the IRQ pin high to low
+        #transition. The pipe information is unreliable if the STATUS register is read during an IRQ pin
+        #high to low transition.
+        status = self.get_status()
         del pipe_num[:]
         if result and pipe_num is not None:
             pipe_num.append((status & NRF24.RX_P_NO_MASK) >> NRF24.RX_P_NO)
