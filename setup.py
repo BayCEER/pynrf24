@@ -2,7 +2,7 @@
 
 from distutils.core import setup
 
-setup(name='nrf24',
+setup(
     name='nrf24',
     version='1.0.4',
     packages=['nrf24'],
